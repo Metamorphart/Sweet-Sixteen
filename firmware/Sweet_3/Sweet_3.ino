@@ -89,7 +89,6 @@ const int midiFlashDuration = 50;
 int ledPin = 13;
 
 // midi read helpers
-# define MIDI_CANNEL_OFFSET 20
 int command = 0;
 int channel = 0;
 int data1 = 0;
@@ -99,6 +98,7 @@ int achannel = 0;
 int adata1 = 0;
 int adata2 = 0;
 
+int i2clvalue[100][2];
 
 // the storage of the values; current is in the main loop; last value is for midi output
 int volatile currentValue[channelCount];
@@ -488,7 +488,7 @@ void doMidiRead()
   if (er301Present) {
     
     acommand = usbMIDI.getType();
-    achannel = usbMIDI.getChannel() - 1 + 20;
+    achannel = usbMIDI.getChannel() - 1;
     adata1   = usbMIDI.getData1();
     adata2   = usbMIDI.getData2();
 
@@ -500,23 +500,34 @@ void doMidiRead()
       data1 = adata1;
       data2 = adata2;
 
-      if (channel == 29){ // midi channel 10
+      if (channel == 10){ // midi channel 10
         switch (command) {
           case 144:
-            sendi2c(er301I2Caddress, 0, TO_TR_PULSE, data1+4, 1); // data1 c1=36 + 4=beginning in 40 tr 
+            if(data1 < 36 && data1 > 56){
+              sendi2c(er301I2Caddress, 0, TO_TR_PULSE, data1+24, 1); // data1 c1=36 + 4=beginning in 60
+              sendi2c(er301I2Caddress, 0, TO_CV,       data1+24, data2*130);
+            }
             break;
         } // end switch
       }else{
-        switch (command) {
-          case 128:
-            sendi2c(er301I2Caddress, 0, TO_TR, channel, 0);
-            break;
-          case 144:
-            sendi2c(er301I2Caddress, 0, TO_TR, channel, 1);
-            // data1 == c-2 == data1-21 = A0
-            sendi2c(er301I2Caddress, 0, TO_CV, channel, (data1 - 21) * 136.5416);
-            break;
-        } // end switch
+        if (channel < 10){
+          switch (command) {
+            case 128: // note off
+              sendi2c(er301I2Caddress, 0, TO_TR, channel + 20, 0);
+              break;
+            case 144:
+              sendi2c(er301I2Caddress, 0, TO_TR, channel + 20, 1);
+              // data1 == c-2 == data1-21 = A0
+              sendi2c(er301I2Caddress, 0, TO_CV, channel + 20, (data1 - 21) * 136.5416);
+              sendi2c(er301I2Caddress, 0, TO_CV, channel + 30, data2*130);
+              break;
+            case 176: // CC
+              if (data1 == 33 || data1 == 34){ // only CC 33 - 34
+                sendi2c(er301I2Caddress, 0, TO_CV, channel + (data1==33?40:50), data2*130);
+              }
+              break;
+          } // end switch
+        }
       } // end midichannel 10
     } // end if change
   } // end if er-301
@@ -720,6 +731,12 @@ void doMidiWrite()
 */
 void sendi2c(uint8_t model, uint8_t deviceIndex, uint8_t cmd, uint8_t devicePort, int value)
 {
+
+  int a = cmd < TO_CV ? 0 : 1;
+  if (i2clvalue[devicePort][a] == value){
+    return;
+  }
+  i2clvalue[devicePort][a] = value;
 
   D(Serial.printf("i2c Master: model:%d deviceIndex:%d cmd:%d devicePort:%d value:%d\n", model, deviceIndex, cmd, devicePort, value));
 
