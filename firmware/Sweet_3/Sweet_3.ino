@@ -346,6 +346,7 @@ void setup()
   if (ledOn) {
     digitalWrite(ledPin, HIGH);
   }
+  
 }
 
 /*
@@ -488,7 +489,7 @@ void doMidiRead()
   if (er301Present) {
     
     acommand = usbMIDI.getType();
-    achannel = usbMIDI.getChannel() - 1;
+    achannel = usbMIDI.getChannel();
     adata1   = usbMIDI.getData1();
     adata2   = usbMIDI.getData2();
 
@@ -503,7 +504,7 @@ void doMidiRead()
       if (channel == 10){ // midi channel 10
         switch (command) {
           case 144:
-            if(data1 < 36 && data1 > 56){
+            if(data1 > 35 && data1 < 56){
               sendi2c(er301I2Caddress, 0, TO_TR_PULSE, data1+24, 1); // data1 c1=36 + 4=beginning in 60
               sendi2c(er301I2Caddress, 0, TO_CV,       data1+24, data2*130);
             }
@@ -513,17 +514,17 @@ void doMidiRead()
         if (channel < 10){
           switch (command) {
             case 128: // note off
-              sendi2c(er301I2Caddress, 0, TO_TR, channel + 20, 0);
+              sendi2c(er301I2Caddress, 0, TO_TR, channel + 19, 0);
               break;
             case 144:
-              sendi2c(er301I2Caddress, 0, TO_TR, channel + 20, 1);
+              sendi2c(er301I2Caddress, 0, TO_TR, channel + 19, 1);
               // data1 == c-2 == data1-21 = A0
-              sendi2c(er301I2Caddress, 0, TO_CV, channel + 20, (data1 - 21) * 136.5416);
-              sendi2c(er301I2Caddress, 0, TO_CV, channel + 30, data2*130);
+              sendi2c(er301I2Caddress, 0, TO_CV, channel + 19, (data1 - 21) * 136.5416);
+              sendi2c(er301I2Caddress, 0, TO_CV, channel + 29, data2*130);
               break;
             case 176: // CC
               if (data1 == 33 || data1 == 34){ // only CC 33 - 34
-                sendi2c(er301I2Caddress, 0, TO_CV, channel + (data1==33?40:50), data2*130);
+                sendi2c(er301I2Caddress, 0, TO_CV, channel + (data1==33?39:49), data2*130);
               }
               break;
           } // end switch
@@ -732,11 +733,14 @@ void doMidiWrite()
 void sendi2c(uint8_t model, uint8_t deviceIndex, uint8_t cmd, uint8_t devicePort, int value)
 {
 
+// in debug mode LC will run out of memeory, so it is not possible.
+#ifndef DEBUG  
   int a = cmd < TO_CV ? 0 : 1;
-  if (i2clvalue[devicePort][a] == value){
+  if (cmd < TO_TR_TOG && cmd > TO_TR_POL && i2clvalue[devicePort][a] == value){
     return;
   }
-  i2clvalue[devicePort][a] = value;
+  i2clvalue[devicePort][a] = value;   
+#endif
 
   D(Serial.printf("i2c Master: model:%d deviceIndex:%d cmd:%d devicePort:%d value:%d\n", model, deviceIndex, cmd, devicePort, value));
 
